@@ -62,6 +62,7 @@ export function NewAgent() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const presetAdapterType = searchParams.get("adapterType");
+  const copyFromAgentId = searchParams.get("copyFromAgentId");
 
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
@@ -71,6 +72,13 @@ export function NewAgent() {
   const [roleOpen, setRoleOpen] = useState(false);
   const [reportsToOpen, setReportsToOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isLoadingAgent, setIsLoadingAgent] = useState(false);
+
+  const { data: sourceAgent } = useQuery({
+    queryKey: ["agent", "copy", copyFromAgentId],
+    queryFn: () => agentsApi.getConfiguration(copyFromAgentId!),
+    enabled: !!copyFromAgentId && !!selectedCompanyId,
+  });
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -119,6 +127,29 @@ export function NewAgent() {
       return createValuesForAdapterType(requested as CreateConfigValues["adapterType"]);
     });
   }, [presetAdapterType]);
+
+  useEffect(() => {
+    if (copyFromAgentId && sourceAgent && !isLoadingAgent) {
+      setIsLoadingAgent(true);
+      const sourceAdapterConfig = sourceAgent.adapterConfig as Record<string, unknown> | null | undefined;
+      const sourceRuntimeConfig = sourceAgent.runtimeConfig as Record<string, unknown> | null | undefined;
+      const heartbeatConfig = (sourceRuntimeConfig?.heartbeat as Record<string, unknown>) ?? {};
+      
+      setConfigValues({
+        ...defaultCreateValues,
+        adapterType: sourceAgent.adapterType as CreateConfigValues["adapterType"],
+        heartbeatEnabled: heartbeatConfig.enabled as boolean ?? true,
+        intervalSec: heartbeatConfig.intervalSec as number ?? 3600,
+      });
+      
+      if (sourceAgent.name && typeof sourceAgent.name === "string") setName(sourceAgent.name);
+      if (sourceAgent.title && typeof sourceAgent.title === "string") setTitle(sourceAgent.title);
+      if (sourceAgent.role && sourceAgent.role !== "ceo" && typeof sourceAgent.role === "string") setRole(sourceAgent.role);
+      
+      setIsLoadingAgent(false);
+      return;
+    }
+  }, [copyFromAgentId, sourceAgent, isLoadingAgent]);
 
   const createAgent = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -196,7 +227,7 @@ export function NewAgent() {
       <div>
         <h1 className="text-lg font-semibold">New Agent</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Advanced agent configuration
+          {sourceAgent ? `Copying configuration from ${sourceAgent.name}` : "Advanced agent configuration"}
         </p>
       </div>
 
